@@ -58,7 +58,9 @@ app:
     expiration-hours: 24
   rate-limit:
     enabled: true
-    requests-per-minute: 100             # Max requests per IP per minute
+    requests-per-minute: 100
+  cors:
+    allowed-origins: ${CORS_ORIGINS:*}       # Set to your Vercel URL in production
   cache:
     enabled: false                       # Set true when Redis is available
     ttl-minutes: 60                      # Cache TTL for URL mappings

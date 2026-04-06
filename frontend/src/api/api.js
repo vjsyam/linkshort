@@ -1,9 +1,11 @@
 import axios from 'axios';
 
+// In production: VITE_API_URL = "https://linkshort-api.onrender.com/api"
+// In dev: falls back to "/api" (proxied by Vite to localhost:8080)
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 10000,
+  timeout: 15000,
 });
 
 // JWT interceptor — attach token to every request if available
@@ -63,6 +65,7 @@ export const claimUrls = (shortCodes) => api.post('/urls/claim', { shortCodes })
 export const getAnalytics = (shortCode) => api.get(`/analytics/${shortCode}`);
 
 // QR
-export const getQrCodeUrl = (shortCode) => `/api/qr/${shortCode}`;
+const apiBase = import.meta.env.VITE_API_URL || '/api';
+export const getQrCodeUrl = (shortCode) => `${apiBase}/qr/${shortCode}`;
 
 export default api;
