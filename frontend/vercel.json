@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://linkshort-api.onrender.com/api/$1"
+    },
+    {
+      "source": "/qr/(.*)",
+      "destination": "https://linkshort-api.onrender.com/api/qr/$1"
+    },
+    {
+      "source": "/([a-zA-Z0-9]+)",
+      "destination": "https://linkshort-api.onrender.com/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
