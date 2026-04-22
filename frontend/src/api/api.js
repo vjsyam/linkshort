@@ -5,8 +5,15 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 15000,
+  timeout: 30000,
 });
+
+// Force-logout callback — registered by AuthProvider at mount time.
+// This avoids a circular dependency (api.js ↔ useAuth.jsx).
+let _forceLogoutFn = null;
+export function registerForceLogout(fn) {
+  _forceLogoutFn = fn;
+}
 
 // JWT interceptor — attach token to every request if available
 api.interceptors.request.use((config) => {
@@ -22,13 +29,17 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid — clear auth so user can re-login
+      // Token expired or invalid — force full logout to sync React state
       const hadToken = !!localStorage.getItem('ls_token');
       if (hadToken) {
-        localStorage.removeItem('ls_token');
-        localStorage.removeItem('ls_email');
-        localStorage.removeItem('ls_name');
-        // Don't force reload — let the next render handle it gracefully
+        if (_forceLogoutFn) {
+          _forceLogoutFn(); // clears localStorage + updates React auth state
+        } else {
+          // Fallback if AuthProvider hasn't mounted yet
+          localStorage.removeItem('ls_token');
+          localStorage.removeItem('ls_email');
+          localStorage.removeItem('ls_name');
+        }
       }
     }
     return Promise.reject(error);

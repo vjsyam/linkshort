@@ -23,27 +23,23 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Tracks request count per IP address per minute
  * - Rejects requests exceeding the configured limit with HTTP 429
  *
+ * AUTH PROTECTION:
+ * - Auth endpoints (/api/auth/) have a separate, stricter rate limit
+ *   to prevent brute-force login and credential stuffing attacks.
+ *   Default: 5 auth requests per minute per IP.
+ *
  * WHY IN-MEMORY (not Redis)?
  * - Works without Docker/Redis for local development
  * - For production with multiple instances, replace with Redis-backed
  *   rate limiter (use INCR + EXPIRE commands for distributed counting)
- *
- * IMPLEMENTATION:
- * - ConcurrentHashMap<IP, TokenBucket> for thread-safe concurrent access
- * - Each bucket tracks: count + window start time
- * - Stale entries are lazily cleaned up on access
- *
- * TRADE-OFF:
- * - Fixed window can have burst edge cases (up to 2x limit at window boundary)
- * - For a URL shortener, this is acceptable — sliding window adds complexity
- *   without meaningful benefit at this scale
  */
 @Component
 @Order(1)  // Execute before other filters
 public class RateLimitFilter implements Filter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper objectMapper = new ObjectMapper()
+            .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
 
     @Value("${app.rate-limit.enabled:true}")
     private boolean rateLimitEnabled;
@@ -51,8 +47,12 @@ public class RateLimitFilter implements Filter {
     @Value("${app.rate-limit.requests-per-minute:100}")
     private int requestsPerMinute;
 
-    // Thread-safe map: IP → request tracker
+    @Value("${app.rate-limit.auth-requests-per-minute:5}")
+    private int authRequestsPerMinute;
+
+    // Thread-safe maps: IP → request tracker
     private final Map<String, RequestTracker> requestCounts = new ConcurrentHashMap<>();
+    private final Map<String, RequestTracker> authRequestCounts = new ConcurrentHashMap<>();
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
@@ -66,26 +66,28 @@ public class RateLimitFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
-        // Skip rate limiting for static resources and H2 console
+        // Skip rate limiting for static resources
         String path = httpRequest.getRequestURI();
-        if (path.startsWith("/h2-console") || path.contains(".")) {
+        if (path.contains(".")) {
             chain.doFilter(request, response);
             return;
         }
 
         String clientIp = getClientIp(httpRequest);
 
-        if (isRateLimited(clientIp)) {
-            log.warn("Rate limit exceeded for IP: {}", clientIp);
+        // Stricter rate limit for auth endpoints (brute-force protection)
+        if (path.startsWith("/api/auth/")) {
+            if (isRateLimited(clientIp, authRequestCounts, authRequestsPerMinute)) {
+                log.warn("Auth rate limit exceeded for IP: {}", clientIp);
+                sendRateLimitResponse(httpResponse, authRequestsPerMinute);
+                return;
+            }
+        }
 
-            httpResponse.setStatus(429);
-            httpResponse.setContentType("application/json");
-            httpResponse.getWriter().write(
-                    objectMapper.writeValueAsString(
-                            ErrorResponse.of(429, "Too Many Requests",
-                                    "Rate limit exceeded. Max " + requestsPerMinute + " requests per minute.")
-                    )
-            );
+        // General rate limit
+        if (isRateLimited(clientIp, requestCounts, requestsPerMinute)) {
+            log.warn("Rate limit exceeded for IP: {}", clientIp);
+            sendRateLimitResponse(httpResponse, requestsPerMinute);
             return;
         }
 
@@ -101,24 +103,32 @@ public class RateLimitFilter implements Filter {
     }
 
     /**
-     * Check if the IP has exceeded the rate limit.
-     * Uses a fixed-window counter that resets every minute.
+     * Check if the IP has exceeded the rate limit for the given tracking map.
      */
-    private boolean isRateLimited(String clientIp) {
+    private boolean isRateLimited(String clientIp, Map<String, RequestTracker> trackingMap, int limit) {
         long now = System.currentTimeMillis();
         long windowStart = now - 60_000;  // 1 minute window
 
-        RequestTracker tracker = requestCounts.compute(clientIp, (ip, existing) -> {
+        RequestTracker tracker = trackingMap.compute(clientIp, (ip, existing) -> {
             if (existing == null || existing.windowStart < windowStart) {
-                // New window — reset counter
                 return new RequestTracker(now, new AtomicInteger(1));
             }
-            // Same window — increment counter
             existing.count.incrementAndGet();
             return existing;
         });
 
-        return tracker.count.get() > requestsPerMinute;
+        return tracker.count.get() > limit;
+    }
+
+    private void sendRateLimitResponse(HttpServletResponse httpResponse, int limit) throws IOException {
+        httpResponse.setStatus(429);
+        httpResponse.setContentType("application/json");
+        httpResponse.getWriter().write(
+                objectMapper.writeValueAsString(
+                        ErrorResponse.of(429, "Too Many Requests",
+                                "Rate limit exceeded. Max " + limit + " requests per minute.")
+                )
+        );
     }
 
     private String getClientIp(HttpServletRequest request) {
@@ -142,3 +152,4 @@ public class RateLimitFilter implements Filter {
         }
     }
 }
+

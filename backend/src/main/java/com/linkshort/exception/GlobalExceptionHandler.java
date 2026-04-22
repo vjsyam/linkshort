@@ -87,6 +87,17 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle business rule violations (e.g., URL validation, access control, ownership).
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        log.warn("Business rule violation: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(400, "Bad Request", ex.getMessage()));
+    }
+
+    /**
      * Catch-all for unexpected errors.
      * Logs the full stack trace but returns a generic message to the client
      * (never expose internal details in production).

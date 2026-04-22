@@ -3,6 +3,7 @@ package com.linkshort.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 
 /**
  * Request DTO for creating shortened URLs.
@@ -17,6 +18,7 @@ public class ShortenRequest {
         regexp = "^https?://.*",
         message = "URL must start with http:// or https://"
     )
+    @Size(max = 2048, message = "URL must not exceed 2048 characters")
     private String originalUrl;
 
     @Pattern(
@@ -28,7 +30,10 @@ public class ShortenRequest {
     @Positive(message = "Expiry must be a positive number of minutes")
     private Integer expiryMinutes;
 
+    @Size(max = 100, message = "Title must not exceed 100 characters")
     private String title;       // User-editable label
+
+    @Size(max = 100, message = "Password must not exceed 100 characters")
     private String password;    // Optional password protection
 
     public ShortenRequest() {}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
-import { login as loginApi, register as registerApi } from '../api/api';
+import { login as loginApi, register as registerApi, registerForceLogout } from '../api/api';
 
 const AuthContext = createContext(null);
 
@@ -18,6 +18,21 @@ function notifyAuthChange(user) {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const forceLogout = useCallback(() => {
+    localStorage.removeItem('ls_token');
+    localStorage.removeItem('ls_email');
+    localStorage.removeItem('ls_name');
+    setUser(null);
+    notifyAuthChange(null);
+  }, []);
+
+  // Register the force-logout so the API interceptor can call it
+  // when it detects a 401 with a stale token
+  useEffect(() => {
+    registerForceLogout(forceLogout);
+    return () => { registerForceLogout(null); };
+  }, [forceLogout]);
 
   useEffect(() => {
     const token = localStorage.getItem('ls_token');

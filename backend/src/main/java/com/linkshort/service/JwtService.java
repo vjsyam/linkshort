@@ -3,6 +3,9 @@ package com.linkshort.service;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -20,11 +23,36 @@ import java.util.Date;
 @Service
 public class JwtService {
 
-    @Value("${app.jwt.secret:linkshort-secret-key-must-be-at-least-32-chars-long-for-hmac-sha-256}")
+    private static final Logger log = LoggerFactory.getLogger(JwtService.class);
+    private static final String DEFAULT_PLACEHOLDER = "CHANGE_ME_IN_PRODUCTION";
+
+    @Value("${app.jwt.secret:CHANGE_ME_IN_PRODUCTION}")
     private String secret;
 
     @Value("${app.jwt.expiration-hours:24}")
     private int expirationHours;
+
+    /**
+     * Validate JWT secret at startup.
+     * Rejects the default placeholder and secrets shorter than 32 characters.
+     */
+    @PostConstruct
+    public void validateSecret() {
+        if (DEFAULT_PLACEHOLDER.equals(secret)) {
+            log.error("\n" +
+                "============================================================\n" +
+                "  FATAL: JWT_SECRET is not configured!\n" +
+                "  Set the JWT_SECRET environment variable to a random\n" +
+                "  string of at least 32 characters.\n" +
+                "  Generate one: openssl rand -base64 48\n" +
+                "============================================================");
+            throw new IllegalStateException("JWT_SECRET must be configured. See logs for details.");
+        }
+        if (secret.length() < 32) {
+            throw new IllegalStateException("JWT_SECRET must be at least 32 characters long (got " + secret.length() + ")");
+        }
+        log.info("JWT secret validated (length: {} chars)", secret.length());
+    }
 
     private SecretKey getSigningKey() {
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);

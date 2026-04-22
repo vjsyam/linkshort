@@ -7,10 +7,20 @@
 
 server:
   port: 8080
+  # Limit request body size to prevent DoS via large payloads
+  tomcat:
+    max-http-form-post-size: 1048576    # 1 MB
+    max-swallow-size: 1048576           # 1 MB
 
 spring:
   application:
     name: linkshort
+
+  # Request body size limit (Spring layer)
+  servlet:
+    multipart:
+      max-file-size: 1MB
+      max-request-size: 1MB
 
   # --------------------------------------------------------------------------
   # H2 In-Memory Database (Default — Local Development)
@@ -21,10 +31,11 @@ spring:
     username: sa
     password:
 
-  # H2 Console — accessible at http://localhost:8080/h2-console
+  # H2 Console — DISABLED by default for security (RCE risk).
+  # Enable only for local dev: set H2_CONSOLE_ENABLED=true
   h2:
     console:
-      enabled: true
+      enabled: ${H2_CONSOLE_ENABLED:false}
       path: /h2-console
 
   # --------------------------------------------------------------------------
@@ -54,13 +65,16 @@ spring:
 app:
   base-url: ${APP_BASE_URL:auto}           # Set APP_BASE_URL env var for production domain
   jwt:
-    secret: ${JWT_SECRET:linkshort-secret-key-must-be-at-least-32-chars-long-for-hmac-sha-256}
+    # SECURITY: Must be set via JWT_SECRET env var. App will fail to start with default.
+    secret: ${JWT_SECRET:CHANGE_ME_IN_PRODUCTION}
     expiration-hours: 24
   rate-limit:
     enabled: true
     requests-per-minute: 100
+    # Stricter limits for auth endpoints (brute-force protection)
+    auth-requests-per-minute: 5
   cors:
-    allowed-origins: ${CORS_ORIGINS:*}       # Set to your Vercel URL in production
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
   cache:
     enabled: false                       # Set true when Redis is available
     ttl-minutes: 60                      # Cache TTL for URL mappings
@@ -72,8 +86,10 @@ app:
 logging:
   level:
     root: INFO
-    com.linkshort: DEBUG
+    com.linkshort: INFO
     org.springframework.web: INFO
+    # Uncomment for debugging:
+    # com.linkshort: DEBUG
   pattern:
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
 
@@ -90,7 +106,7 @@ spring:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/linkshort}
     driver-class-name: org.postgresql.Driver
     username: ${DATABASE_USER:linkshort}
-    password: ${DATABASE_PASSWORD:linkshort_secret}
+    password: ${DATABASE_PASSWORD:}
 
   h2:
     console:
@@ -109,3 +125,4 @@ spring:
 app:
   cache:
     enabled: true
+

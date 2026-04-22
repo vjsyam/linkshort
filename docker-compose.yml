@@ -46,7 +46,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost}
-      JWT_SECRET: ${JWT_SECRET:-linkshort-secret-key-must-be-at-least-32-chars-long-for-hmac-sha-256}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET env var is required}
     ports:
       - "8080:8080"
 

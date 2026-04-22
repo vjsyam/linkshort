@@ -49,10 +49,7 @@ public class UrlController {
         return ResponseEntity.status(HttpStatus.CREATED).body(responses);
     }
 
-    @GetMapping("/urls")
-    public ResponseEntity<List<ShortenResponse>> getAllUrls() {
-        return ResponseEntity.ok(urlService.getAllUrls());
-    }
+    // GET /api/urls removed — was a data leak (exposed all URLs publicly)
 
     @GetMapping("/urls/my")
     public ResponseEntity<List<ShortenResponse>> getMyUrls() {

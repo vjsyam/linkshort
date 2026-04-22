@@ -12,6 +12,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -28,6 +29,12 @@ import java.util.List;
  * - CORS enabled for cross-origin deployment (Vercel → Render)
  * - Public endpoints: auth, shorten, redirect, QR
  * - Protected endpoints: /api/urls/my, analytics (ownership checked)
+ *
+ * SECURITY HEADERS:
+ * - X-Frame-Options: DENY (clickjacking protection)
+ * - X-Content-Type-Options: nosniff (MIME-type sniffing protection)
+ * - Referrer-Policy: strict-origin-when-cross-origin
+ * - HSTS: enforces HTTPS for 1 year (including subdomains)
  */
 @Configuration
 @EnableWebSecurity
@@ -35,7 +42,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
 
-    @Value("${app.cors.allowed-origins:*}")
+    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
     private String allowedOrigins;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
@@ -53,21 +60,29 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/shorten").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/shorten/bulk").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/urls").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/analytics/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/qr/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/{shortCode}").permitAll()
                 .requestMatchers(HttpMethod.POST, "/{shortCode}/verify").permitAll()
-                // H2 console (dev only)
-                .requestMatchers("/h2-console/**").permitAll()
                 // Protected endpoints
                 .requestMatchers("/api/urls/my").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/analytics/**").authenticated()
                 .requestMatchers(HttpMethod.PATCH, "/api/urls/**").authenticated()
                 .requestMatchers(HttpMethod.DELETE, "/api/urls/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/urls/claim").authenticated()
                 .anyRequest().permitAll()
             )
-            .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
+            // Security headers
+            .headers(headers -> headers
+                .frameOptions(frame -> frame.deny())
+                .contentTypeOptions(cto -> {})  // X-Content-Type-Options: nosniff (enabled by default)
+                .httpStrictTransportSecurity(hsts -> hsts
+                    .includeSubDomains(true)
+                    .maxAgeInSeconds(31536000)  // 1 year
+                )
+                .referrerPolicy(referrer -> referrer
+                    .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)
+                )
+            )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -98,3 +113,4 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 }
+

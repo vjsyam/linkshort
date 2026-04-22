@@ -11,6 +11,7 @@ import com.linkshort.repository.ClickEventRepository;
 import com.linkshort.repository.UrlRepository;
 import com.linkshort.util.Base62;
 import com.linkshort.util.NetworkUtils;
+import com.linkshort.util.UrlValidator;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -19,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +44,7 @@ public class UrlService {
 
     private final UrlRepository urlRepository;
     private final ClickEventRepository clickEventRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Autowired(required = false)
     private StringRedisTemplate redisTemplate;
@@ -63,9 +66,11 @@ public class UrlService {
 
     private String baseUrl;
 
-    public UrlService(UrlRepository urlRepository, ClickEventRepository clickEventRepository) {
+    public UrlService(UrlRepository urlRepository, ClickEventRepository clickEventRepository,
+                      PasswordEncoder passwordEncoder) {
         this.urlRepository = urlRepository;
         this.clickEventRepository = clickEventRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     /**
@@ -88,6 +93,9 @@ public class UrlService {
      */
     @Transactional
     public ShortenResponse shortenUrl(ShortenRequest request, Long userId) {
+        // Validate URL is safe (blocks SSRF, private IPs, localhost, etc.)
+        UrlValidator.validate(request.getOriginalUrl());
+
         String customAlias = request.getCustomAlias();
 
         // Custom alias path
@@ -104,7 +112,10 @@ public class UrlService {
         mapping.setShortCode("temp");
         mapping.setUserId(userId);
         mapping.setTitle(request.getTitle());
-        mapping.setPassword(request.getPassword());
+        // Hash link password with BCrypt (never store plaintext)
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            mapping.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
 
         if (request.getExpiryMinutes() != null) {
             mapping.setExpiryDate(LocalDateTime.now().plusMinutes(request.getExpiryMinutes()));
@@ -172,7 +183,10 @@ public class UrlService {
     public boolean verifyPassword(String shortCode, String password) {
         UrlMapping mapping = urlRepository.findByShortCode(shortCode)
                 .orElseThrow(() -> new UrlNotFoundException(shortCode));
-        return mapping.getPassword() != null && mapping.getPassword().equals(password);
+        if (mapping.getPassword() == null || password == null) {
+            return false;
+        }
+        return passwordEncoder.matches(password, mapping.getPassword());
     }
 
     /**
@@ -261,6 +275,7 @@ public class UrlService {
     public List<ShortenResponse> bulkShorten(List<String> urls, Long userId) {
         List<ShortenResponse> responses = new ArrayList<>();
         for (String url : urls) {
+            // Each URL is validated inside shortenUrl() via UrlValidator
             ShortenRequest req = new ShortenRequest();
             req.setOriginalUrl(url);
             responses.add(shortenUrl(req, userId));
@@ -295,7 +310,10 @@ public class UrlService {
         mapping.setShortCode(shortCode);
         mapping.setUserId(userId);
         mapping.setTitle(request.getTitle());
-        mapping.setPassword(request.getPassword());
+        // Hash link password with BCrypt (never store plaintext)
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            mapping.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
 
         if (request.getExpiryMinutes() != null) {
             mapping.setExpiryDate(LocalDateTime.now().plusMinutes(request.getExpiryMinutes()));

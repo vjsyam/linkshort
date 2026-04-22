@@ -62,14 +62,20 @@ public class AnalyticsService {
         UrlMapping mapping = urlRepository.findByShortCode(shortCode)
                 .orElseThrow(() -> new UrlNotFoundException(shortCode));
 
+        // Require authentication for analytics
+        if (userId == null) {
+            throw new IllegalArgumentException("Authentication required to view analytics");
+        }
+
         // Ownership check: only the owner can view analytics
-        if (userId != null && mapping.getUserId() != null && !userId.equals(mapping.getUserId())) {
+        if (mapping.getUserId() != null && !userId.equals(mapping.getUserId())) {
             throw new IllegalArgumentException("You don't have access to this link's analytics");
         }
 
-        // If the link has an owner and the viewer is anonymous — deny
-        if (userId == null && mapping.getUserId() != null) {
-            throw new IllegalArgumentException("You don't have access to this link's analytics");
+        // If the link has no owner (anonymous link), only deny if the viewer doesn't own it
+        // Since we require auth above, and the link has no owner, deny access
+        if (mapping.getUserId() == null) {
+            throw new IllegalArgumentException("Analytics are not available for anonymous links");
         }
 
         LocalDateTime since = LocalDateTime.now().minusDays(30);
