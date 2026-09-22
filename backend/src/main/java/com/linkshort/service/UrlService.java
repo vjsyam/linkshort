@@ -191,23 +191,31 @@ public class UrlService {
 
     /**
      * Records a click event asynchronously.
+     * Takes pre-extracted request strings to avoid Tomcat request facade recycling errors in async thread.
      */
     @Async
     @Transactional
-    public void recordClick(String shortCode, HttpServletRequest request) {
+    public void recordClick(String shortCode, String ipAddress, String userAgent, String referer) {
         try {
             urlRepository.incrementClickCount(shortCode);
 
             ClickEvent event = new ClickEvent();
             event.setShortCode(shortCode);
-            event.setIpAddress(getClientIp(request));
-            event.setUserAgent(request.getHeader("User-Agent"));
-            event.setReferer(request.getHeader("Referer"));
+            event.setIpAddress(ipAddress);
+            event.setUserAgent(userAgent);
+            event.setReferer(referer);
 
             clickEventRepository.save(event);
         } catch (Exception e) {
             log.error("Failed to record click for {}: {}", shortCode, e.getMessage());
         }
+    }
+
+    public void recordClick(String shortCode, HttpServletRequest request) {
+        String ip = getClientIp(request);
+        String userAgent = request != null ? request.getHeader("User-Agent") : null;
+        String referer = request != null ? request.getHeader("Referer") : null;
+        recordClick(shortCode, ip, userAgent, referer);
     }
 
     /**
@@ -351,6 +359,22 @@ public class UrlService {
         response.setIsActive(mapping.getIsActive());
         response.setHasPassword(mapping.getPassword() != null && !mapping.getPassword().isBlank());
         return response;
+    }
+
+    public String getBaseUrl() {
+        if (this.baseUrl == null || "auto".equals(this.baseUrl)) {
+            String lanIp = NetworkUtils.detectLanIp();
+            this.baseUrl = "http://" + lanIp + ":" + serverPort;
+        }
+        return this.baseUrl;
+    }
+
+    public String getShortUrl(String shortCode) {
+        return getBaseUrl() + "/" + shortCode;
+    }
+
+    public String getOriginalUrl(String shortCode) {
+        return resolveUrl(shortCode);
     }
 
     private String getClientIp(HttpServletRequest request) {

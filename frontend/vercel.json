@@ -9,7 +9,7 @@
       "destination": "https://linkshort-chm3.onrender.com/api/qr/$1"
     },
     {
-      "source": "/([a-zA-Z0-9]+)",
+      "source": "/([a-zA-Z0-9_-]+)",
       "destination": "https://linkshort-chm3.onrender.com/$1"
     },
     {

@@ -92,10 +92,15 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        if ("*".equals(allowedOrigins)) {
+        List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+
+        if (origins.contains("*") || "*".equals(allowedOrigins.trim())) {
             config.setAllowedOriginPatterns(List.of("*"));
         } else {
-            config.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
+            config.setAllowedOriginPatterns(origins);
         }
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));

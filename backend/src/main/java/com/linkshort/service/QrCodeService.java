@@ -33,17 +33,40 @@ public class QrCodeService {
     private static final Logger log = LoggerFactory.getLogger(QrCodeService.class);
     private static final int QR_SIZE = 300;  // 300x300 pixels
 
-    @Value("${app.base-url}")
-    private String baseUrl;
+    private final UrlService urlService;
+
+    public QrCodeService(UrlService urlService) {
+        this.urlService = urlService;
+    }
 
     /**
      * Generate a QR code PNG image for a short code.
      *
      * @param shortCode the short code to encode in the QR
+     * @param target "short" for short redirect URL, "direct" for original destination URL
      * @return PNG image as byte array
      */
+    public byte[] generateQrCode(String shortCode, String target) throws WriterException, IOException {
+        String targetUrl;
+        if ("direct".equalsIgnoreCase(target)) {
+            targetUrl = urlService.getOriginalUrl(shortCode);
+        } else {
+            targetUrl = urlService.getShortUrl(shortCode);
+        }
+        return generateQrCodeForUrl(targetUrl);
+    }
+
     public byte[] generateQrCode(String shortCode) throws WriterException, IOException {
-        String url = baseUrl + "/" + shortCode;
+        return generateQrCode(shortCode, "short");
+    }
+
+    /**
+     * Generate a QR code PNG image directly for any URL.
+     */
+    public byte[] generateQrCodeForUrl(String url) throws WriterException, IOException {
+        if (url == null || url.isBlank()) {
+            throw new IllegalArgumentException("URL to encode in QR code cannot be empty");
+        }
 
         // Configure QR code parameters
         Map<EncodeHintType, Object> hints = new HashMap<>();

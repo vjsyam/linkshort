@@ -47,7 +47,7 @@ public class RateLimitFilter implements Filter {
     @Value("${app.rate-limit.requests-per-minute:100}")
     private int requestsPerMinute;
 
-    @Value("${app.rate-limit.auth-requests-per-minute:5}")
+    @Value("${app.rate-limit.auth-requests-per-minute:30}")
     private int authRequestsPerMinute;
 
     // Thread-safe maps: IP → request tracker
@@ -66,7 +66,12 @@ public class RateLimitFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
-        // Skip rate limiting for static resources
+        // Skip rate limiting for OPTIONS preflight requests and static resources
+        if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
+            chain.doFilter(request, response);
+            return;
+        }
+
         String path = httpRequest.getRequestURI();
         if (path.contains(".")) {
             chain.doFilter(request, response);
@@ -79,7 +84,7 @@ public class RateLimitFilter implements Filter {
         if (path.startsWith("/api/auth/")) {
             if (isRateLimited(clientIp, authRequestCounts, authRequestsPerMinute)) {
                 log.warn("Auth rate limit exceeded for IP: {}", clientIp);
-                sendRateLimitResponse(httpResponse, authRequestsPerMinute);
+                sendRateLimitResponse(httpRequest, httpResponse, authRequestsPerMinute);
                 return;
             }
         }
@@ -87,7 +92,7 @@ public class RateLimitFilter implements Filter {
         // General rate limit
         if (isRateLimited(clientIp, requestCounts, requestsPerMinute)) {
             log.warn("Rate limit exceeded for IP: {}", clientIp);
-            sendRateLimitResponse(httpResponse, requestsPerMinute);
+            sendRateLimitResponse(httpRequest, httpResponse, requestsPerMinute);
             return;
         }
 
@@ -120,7 +125,14 @@ public class RateLimitFilter implements Filter {
         return tracker.count.get() > limit;
     }
 
-    private void sendRateLimitResponse(HttpServletResponse httpResponse, int limit) throws IOException {
+    private void sendRateLimitResponse(HttpServletRequest httpRequest, HttpServletResponse httpResponse, int limit) throws IOException {
+        String origin = httpRequest.getHeader("Origin");
+        if (origin != null && !origin.isBlank()) {
+            httpResponse.setHeader("Access-Control-Allow-Origin", origin);
+            httpResponse.setHeader("Access-Control-Allow-Credentials", "true");
+            httpResponse.setHeader("Vary", "Origin");
+        }
+
         httpResponse.setStatus(429);
         httpResponse.setContentType("application/json");
         httpResponse.getWriter().write(

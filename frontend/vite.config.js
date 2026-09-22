@@ -11,6 +11,11 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      // Proxy short code redirects to backend in dev
+      '^/(?!@|assets|src|node_modules|vite.svg)[a-zA-Z0-9_-]+$': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
 });

@@ -32,21 +32,32 @@ public class QrCodeController {
     }
 
     /**
-     * GET /api/qr/{shortCode}
+     * GET /api/qr/{shortCode}?target=short|direct&url=...
      *
      * Generates and returns a QR code PNG image for the given short code.
+     * target: "short" (default) encodes the short redirect URL.
+     *         "direct" encodes the original destination URL.
+     * url: optional explicit URL to encode directly into the QR code.
      * Content-Type: image/png
      */
     @GetMapping("/{shortCode}")
     public ResponseEntity<byte[]> getQrCode(
-            @PathVariable @Pattern(regexp = "^[a-zA-Z0-9_-]{1,20}$", message = "Invalid short code") String shortCode)
+            @PathVariable @Pattern(regexp = "^[a-zA-Z0-9_-]{1,20}$", message = "Invalid short code") String shortCode,
+            @RequestParam(required = false, defaultValue = "short") String target,
+            @RequestParam(required = false) String url)
             throws WriterException, IOException {
 
-        byte[] qrImage = qrCodeService.generateQrCode(shortCode);
+        byte[] qrImage;
+        if (url != null && !url.isBlank()) {
+            qrImage = qrCodeService.generateQrCodeForUrl(url);
+        } else {
+            qrImage = qrCodeService.generateQrCode(shortCode, target);
+        }
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.IMAGE_PNG);
         headers.setContentLength(qrImage.length);
+        headers.setCacheControl("public, max-age=86400");
 
         return new ResponseEntity<>(qrImage, headers, HttpStatus.OK);
     }

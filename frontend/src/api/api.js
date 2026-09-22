@@ -77,6 +77,12 @@ export const getAnalytics = (shortCode) => api.get(`/analytics/${shortCode}`);
 
 // QR
 const apiBase = import.meta.env.VITE_API_URL || '/api';
-export const getQrCodeUrl = (shortCode) => `${apiBase}/qr/${shortCode}`;
+export const getQrCodeUrl = (shortCode, target = 'short', directUrl = null) => {
+  let url = `${apiBase}/qr/${shortCode}?target=${target}`;
+  if (directUrl) {
+    url += `&url=${encodeURIComponent(directUrl)}`;
+  }
+  return url;
+};
 
 export default api;

@@ -2,27 +2,32 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   shortenUrl as shortenApi, getMyUrls, getAnalytics,
   toggleUrl as toggleApi, deleteUrl as deleteApi, bulkShorten as bulkApi,
+  claimUrls,
 } from '../api/api';
 import { onAuthChange } from './useAuth.jsx';
 
-const ANON_TTL_MS = 5 * 60 * 1000; // 5 minutes
+function getStoredAnonUrls() {
+  try {
+    const raw = localStorage.getItem('ls_anon_urls');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredAnonUrls(urls) {
+  try {
+    localStorage.setItem('ls_anon_urls', JSON.stringify(urls));
+  } catch {}
+}
 
 export function useShorten() {
-  const [urls, setUrls] = useState([]);
+  const [urls, setUrls] = useState(() => {
+    return localStorage.getItem('ls_token') ? [] : getStoredAnonUrls();
+  });
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const anonTimerRef = useRef(null);
-
-  // Schedule auto-clear of anonymous session URLs after 5 min
-  const scheduleAnonClear = useCallback(() => {
-    if (anonTimerRef.current) clearTimeout(anonTimerRef.current);
-    anonTimerRef.current = setTimeout(() => {
-      if (!localStorage.getItem('ls_token')) {
-        setUrls([]);
-      }
-    }, ANON_TTL_MS);
-  }, []);
 
   // Listen for auth changes
   useEffect(() => {
@@ -31,19 +36,29 @@ export function useShorten() {
       setError(null);
 
       if (user) {
-        // Logged in — fetch only their links
-        if (anonTimerRef.current) clearTimeout(anonTimerRef.current);
+        // Logged in — claim any anonymous links created before logging in
+        const anonUrls = getStoredAnonUrls();
+        if (anonUrls.length > 0) {
+          try {
+            const codes = anonUrls.map(u => u.shortCode).filter(Boolean);
+            if (codes.length > 0) {
+              await claimUrls(codes);
+            }
+          } catch {}
+          localStorage.removeItem('ls_anon_urls');
+        }
+
+        // Fetch user's links from server
         try {
           const r = await getMyUrls();
           setUrls(Array.isArray(r.data) ? r.data : []);
         } catch { setUrls([]); }
       } else {
-        // Logged out — clear everything
-        setUrls([]);
-        if (anonTimerRef.current) clearTimeout(anonTimerRef.current);
+        // Logged out — restore any anonymous session links
+        setUrls(getStoredAnonUrls());
       }
     });
-    return () => { unsub(); if (anonTimerRef.current) clearTimeout(anonTimerRef.current); };
+    return () => { unsub(); };
   }, []);
 
   const shortenUrl = useCallback(async (originalUrl, customAlias, expiryMinutes, title, password) => {
@@ -51,13 +66,13 @@ export function useShorten() {
     setError(null);
     try {
       const { data } = await shortenApi(originalUrl, customAlias, expiryMinutes, title, password);
-      setUrls(prev => [data, ...prev]);
-
-      // For anonymous users, auto-clear after 5 min
-      if (!localStorage.getItem('ls_token')) {
-        scheduleAnonClear();
-      }
-
+      setUrls(prev => {
+        const next = [data, ...prev];
+        if (!localStorage.getItem('ls_token')) {
+          saveStoredAnonUrls(next);
+        }
+        return next;
+      });
       return data;
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Failed to shorten URL';
@@ -66,7 +81,7 @@ export function useShorten() {
     } finally {
       setLoading(false);
     }
-  }, [scheduleAnonClear]);
+  }, []);
 
   const bulkShorten = useCallback(async (urlList) => {
     setLoading(true);
@@ -74,11 +89,13 @@ export function useShorten() {
     try {
       const { data } = await bulkApi(urlList);
       if (Array.isArray(data)) {
-        setUrls(prev => [...data, ...prev]);
-
-        if (!localStorage.getItem('ls_token')) {
-          scheduleAnonClear();
-        }
+        setUrls(prev => {
+          const next = [...data, ...prev];
+          if (!localStorage.getItem('ls_token')) {
+            saveStoredAnonUrls(next);
+          }
+          return next;
+        });
       }
       return data;
     } catch (err) {
@@ -88,7 +105,7 @@ export function useShorten() {
     } finally {
       setLoading(false);
     }
-  }, [scheduleAnonClear]);
+  }, []);
 
   // Only logged-in users fetch from server
   const fetchMyUrls = useCallback(async () => {

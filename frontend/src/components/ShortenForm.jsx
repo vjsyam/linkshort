@@ -15,7 +15,12 @@ function ShortenForm({ onShorten, onBulkShorten, loading, error, setError }) {
     e.preventDefault();
 
     if (bulkMode) {
-      const lines = bulkUrls.split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
+      const lines = bulkUrls
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean)
+        .map(l => /^https?:\/\//i.test(l) ? l : 'https://' + l);
+
       if (lines.length === 0) { toast.error('Enter at least one valid URL'); return; }
       if (lines.length > 20) { toast.error('Maximum 20 URLs per batch'); return; }
       try {
@@ -27,13 +32,14 @@ function ShortenForm({ onShorten, onBulkShorten, loading, error, setError }) {
     }
 
     if (!url.trim()) { toast.error('Paste a URL first'); return; }
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      toast.error('URL must start with http:// or https://');
-      return;
+
+    let finalUrl = url.trim();
+    if (!/^https?:\/\//i.test(finalUrl)) {
+      finalUrl = 'https://' + finalUrl;
     }
 
     try {
-      await onShorten(url.trim(), customAlias || null, expiryMinutes || null, title || null, password || null);
+      await onShorten(finalUrl, customAlias || null, expiryMinutes || null, title || null, password || null);
       toast.success('Link created!');
       setUrl(''); setCustomAlias(''); setExpiryMinutes(''); setTitle(''); setPassword('');
     } catch (err) { toast.error(err.message); }
