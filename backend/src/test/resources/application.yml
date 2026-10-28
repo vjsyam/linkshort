@@ -1,0 +1,8 @@
+# =============================================================================
+# Test Profile Configuration
+# =============================================================================
+app:
+  jwt:
+    secret: "linkshort-unit-test-jwt-secret-key-must-be-at-least-32-chars-long"
+  rate-limit:
+    enabled: false
